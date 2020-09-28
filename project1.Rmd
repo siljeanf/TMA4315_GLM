@@ -56,7 +56,9 @@ myglm <- function(formula, data, start=0) {
     beta <- beta + solve(Fisherinfo) %*% score
     F.inv <- solve(Fisherinfo)
     std.error <- sqrt(diag(F.inv))
-    cat(beta,"\n", std.error,"\n" )
+    #matrix of beta and std.error:
+    coeff = cbind(beta, std.error)
+    colnames(coeff) <- c("Estimate", "Std.Error")
   }
   # find deviance
   log.cand <- sum(as.vector(y*log(lambda)-lambda)) #removed y as it cancels!
@@ -64,7 +66,10 @@ myglm <- function(formula, data, start=0) {
   yfix[y==0] <- 1 #set log(0)=1
   log.sat <- sum(as.vector(yfix * log(yfix)-yfix)) #set y=lambda
   deviance = 2 * sum(log.sat - log.cand)
-  cat(deviance,"\n")
+  # cat(deviance,"\n")
+  
+  return (list(coefficients=coeff, deviance=deviance, vcov = F.inv))
+  
  }
   
 ```
@@ -76,13 +81,17 @@ myglm <- function(formula, data, start=0) {
 #model from ex.2
 load(url("https://www.math.ntnu.no/emner/TMA4315/2020h/hoge-veluwe.Rdata"))
 mod <- myglm(data$y~., data)
+mod
 
 #test code with glm function
 testMod <- glm(formula = data$y~., data = data, family = poisson(link = log))
 summary(testMod)
+vcov(testMod)
 
 
 ```
+
+
 
 
 
