@@ -21,7 +21,50 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Problem 1
 
-##1a) 
+## 1a) GLM with Poisson distributed response variable and canonical link function  
+
+### Poisson distribution
+
+$$
+f(y)=\frac{\lambda^y}{y!}e^{-\lambda} \text{ for } y=0,1,2,...
+$$
+
+### likelihood
+
+We assume that pairs of covariates and response are measured independently of each other: $({\bf x}_i,Y_i)$, and $Y_i$ follows the distribution specified above, and ${\bf x}_i$ is fixed.
+
+$$L(\beta)=\prod_{i=1}^n L_i(\beta)=\prod_{i=1}^n f(y_i; \beta)=\prod_{i=1}^n\frac{\lambda_i^{y_i}}{y_i!}\exp(-\lambda_i)$$
+
+### log likelihood
+
+$$l(\beta)=\ln L(\beta)=\sum_{i=1}^n \ln L_i(\beta)=\sum_{i=1}^n l_i(\beta)=\sum_{i=1}^n [y_i \ln(\lambda_i)-\lambda_i-\ln(y!)]$$
+
+ 
+### Score function
+
+$$s(\beta)=\frac{\partial l(\beta)}{\partial \beta}=
+\sum_{i=1}^n \frac{\partial l_i(\beta)}{\partial \beta}=
+\sum_{i=1}^n s_i(\beta)
+$$
+$$
+s_i(\beta)=\frac{\partial l_i(\beta)}{\partial \beta}=\frac{\partial l_i(\beta)}{\partial \eta_i}\cdot \frac{\partial \eta_i}{\partial \beta}=\frac{\partial [y_i\eta_i-\exp(\eta_i)+C_i]}{\partial \eta_i}\cdot \frac{\partial [{\bf x}_i^T\beta ]}{\partial \beta} =[y_i-\exp(\eta_i)]\cdot {\bf x}_i=(y_i-\lambda_i){\bf x}_i $$
+
+$$s(\beta)=\sum_{i=1}^n s_i(\beta)=\sum_{i=1}^n (y_i-\lambda_i){\bf x}_i$$
+
+### Fisher information
+
+$$
+
+\begin{align} F(\beta) &= \text{Cov}(s(\beta)) =   \sum_{i=1}^n \text{Cov}(s_i(\beta)) \\
+&= \sum_{i=1}^n E\left[\Big(s_i(\beta) - E(s_i(\beta))\Big)\Big(s_i(\beta)-E(s_i(\beta))\Big)^T\right] \\
+&= \sum_{i=1}^n E(s_i(\beta)s_i(\beta)^T) = \sum_{i=1}^n F_i(\beta) 
+\end{align}
+$$
+
+$$ F_i(\beta) = E(s_i(\beta)s_i(\beta)^T) = E((Y_i-\lambda_i){\bf x}_i(Y_i-\lambda_i){\bf x}_i^T) = {\bf x}_i{\bf x}_i^T E((Y_i-\lambda_i)^2) = {\bf x}_i{\bf x}_i^T \lambda_i $$
+where $$E((Y_i-\lambda_i)^2)=\text{Var}(Y_i)=\lambda$$ is the variance of $Y_i$
+
+$$F(\beta) = \sum_{i=1}^n {\bf x}_i{\bf x}_i^T \lambda_i.$$
 
 ##1b) Fisher Scoring Algorithm
 
@@ -61,12 +104,11 @@ myglm <- function(formula, data, start=0) {
     colnames(coeff) <- c("Estimate", "Std.Error")
   }
   # find deviance
-  log.cand <- sum(as.vector(y*log(lambda)-lambda)) #removed y as it cancels!
+  log.cand <- sum(y*log(lambda)-lambda) #removed y as it cancels!
   yfix <- y #fix special case for saturated model when lambda=y=0
   yfix[y==0] <- 1 #set log(0)=1
-  log.sat <- sum(as.vector(yfix * log(yfix)-yfix)) #set y=lambda
+  log.sat <- sum(yfix * log(yfix)-yfix) #set y=lambda
   deviance = 2 * sum(log.sat - log.cand)
-  # cat(deviance,"\n")
   
   return (list(coefficients=coeff, deviance=deviance, vcov = F.inv))
   
@@ -75,23 +117,98 @@ myglm <- function(formula, data, start=0) {
 ```
 
 
-## 1c)
+## 1c) Test
 ```{r test myglm}
 
 #model from ex.2
 load(url("https://www.math.ntnu.no/emner/TMA4315/2020h/hoge-veluwe.Rdata"))
-mod <- myglm(data$y~., data)
+mod <- myglm(data$y~t+I(t^2), data)
 mod
 
 #test code with glm function
-testMod <- glm(formula = data$y~., data = data, family = poisson(link = log))
+testMod <- glm(formula = data$y~t+I(t^2), data = data, family = poisson(link = log))
 summary(testMod)
 vcov(testMod)
-
-
 ```
 
 
 
+# Problem 2
+
+## 2a) Interpret parameters
+
+Gaussian function for the expected number of fledglings, $\lambda_i$, produced by each female and dependent on $t_i$.
+
+$$\lambda_i = \lambda_0 \exp( -\frac{(t_i-\theta)^2}{2 \omega^2})$$
+Interpret parameters in the function above:
+
+$\lambda_0$ is the height of the curve's peak, which in this example is the maximum number of fledglings leaving the nest, $y_{max}$.
+
+$\theta$ is the position of the center of the peak, in other words the breeding time for first egg giving a maximum number of fledglings laving the nest, $t_{max}$
+
+$\omega $ controls the width of the "bell", which can be interpreted as the spread or variance of the number of fledglings leaving the nest. 
+
+
+## 2b) 
+
+### GLM
+
+
+
+### relations between GLM parameters contained in $\beta$ and (\lambda_0, \theta, \omega)
+
+$$
+
+\log (\lambda_i) = \log (\lambda_0) -\frac{(t_i-\theta)^2}{2 \omega^2} = \log (\lambda_0) - \frac{t_i^2}{2\omega} + \frac{t_i \theta}{\omega} - \frac{\theta}{2\omega}
+
+$$
+Recall
+
+$$
+y(t_i) = \beta_0 + \beta_1t_i + \beta_2 t_i^2
+$$
+This gives the following coefficients:
+
+$$
+\beta_0 = \log(\lambda_0) -\frac{\theta^2}{2\omega^2}\\ 
+\beta_1 = \frac{\theta}{\omega^2}\\ 
+\beta_2 = -\frac{1}{2\omega^2}
+$$
+This gives the following model:
+
+$$
+y(t_i) = \log(\lambda_0) -\frac{\theta^2}{2\omega^2} + \frac{\theta}{\omega^2}t_i -\frac{1}{2\omega^2} t_i^2
+$$
+
+### arguments why this is a GLM
+
+From exercise 1 we know that MLE for $\beta$ is $\beta = $
+
+
+Spor om denne oppgaven!
+
+## 2c) Fit the model using the function in problem 1b
+
+```{r 2c}
+
+#model from ex.2
+load(url("https://www.math.ntnu.no/emner/TMA4315/2020h/hoge-veluwe.Rdata"))
+modB <- myglm(data$y~t+I(t^2), data)
+modA
+
+```
+
+## 2d) evidence for quadratic fit
+
+```{r 2c}
+
+#hypothesis test using LRT, comparing deviances
+modA <- myglm(data$y~t+I(t^2), data)
+modB <- myglm(data$y~t, data)
+
+modA$deviance
+modB$deviance
+
+```
 
 
