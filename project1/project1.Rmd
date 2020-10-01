@@ -1,0 +1,386 @@
+---
+subtitle: "TMA4315 GLM H2020"
+title: "Project 1"
+author: "10013 - siljeanf@stud.ntnu.no"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r rpackages,eval=TRUE,echo=FALSE}
+# install.packages("knitr") 
+# install.packages("rmarkdown") 
+# install.packages('tinytex')
+# tinytex::install_tinytex()
+
+```
+
+# Problem 1
+
+## 1a) Parameter estimation with MLE
+
+Let y be Poisson distributed,
+
+$$
+f(y)=\frac{\lambda^y}{y!}e^{-\lambda} \text{ for } y=0,1,2,...
+$$
+with a canonical link function: $\eta_i = ln(\lambda_i)$ or $\lambda_i = \exp(\eta_i)$
+
+and systematic component $\eta_i = x_i^T \beta$.
+
+### Likelihood
+
+$$L(\beta)=\prod_{i=1}^n f(y_i; \beta)=\prod_{i=1}^n\frac{\lambda_i^{y_i}}{y_i!}\exp(-\lambda_i)$$
+
+### log likelihood
+
+$$l(\beta)=\ln L(\beta)=\sum_{i=1}^n \ln(f(y_i; \beta))=\sum_{i=1}^n [y_i \ln(\lambda_i)-\lambda_i-\ln(y!)]$$
+
+### Score function
+
+$$
+\begin{aligned}
+s(\beta) &=\frac{\partial l(\beta)}{\partial \beta}\\
+&=\sum_{i=1}^n \frac{\partial l_i(\beta)}{\partial \beta}\\
+&=\sum_{i=1}^n\frac{\partial l_i(\beta)}{\partial \eta_i}\cdot \frac{\partial \eta_i}{\partial \beta}\\
+&=\sum_{i=1}^n \frac{\partial [y_i\eta_i-\exp(\eta_i)+\ln(y!)]}{\partial \eta_i}\cdot \frac{\partial [{\bf x}_i^T\beta ]}{\partial \beta}\\
+&=\sum_{i=1}^n[y_i-\exp(\eta_i)]\cdot {\bf x}_i\\
+&=\sum_{i=1}^n(y_i-\lambda_i){\bf x}_i\\
+\end{aligned}
+$$
+
+
+### Fisher information
+
+$$
+\begin{aligned}
+F(\beta) &= \text{Cov}(s(\beta))\\   
+&= \sum_{i=1}^n E(s_i(\beta)s_i(\beta)^T)\\
+&= \sum_{i=1}^n E((Y_i-\lambda_i){\bf x}_i(Y_i-\lambda_i){\bf x}_i^T)\\
+&= \sum_{i=1}^n {\bf x}_i{\bf x}_i^T E((Y_i-\lambda_i)^2)\\ 
+&= \sum_{i=1}^n {\bf x}_i{\bf x}_i^T \lambda_i\\
+&= X^TWX
+\end{aligned}
+$$
+Notice that $E((Y_i-\lambda_i)^2)=\text{Var}(Y_i)=\lambda$ is the variance of $Y_i$
+
+
+## Observed Fisher information matrix $H(\beta)$
+
+$$
+\begin{aligned}
+H(\beta) &= -\frac{\partial^2l(\beta)}{\partial\beta\partial\beta^T} \\
+&= -\frac{\partial s(\beta)}{\partial\beta^T} \\
+&= \frac{\partial}{\partial\beta^T}\left[\sum_{i=1}^n (\lambda_i-y_i){\bf x}_i \right]\\
+&= \sum_{i=1}^n \frac{\partial}{\partial\beta^T}[{\bf x}_i\lambda_i-{\bf x}_iy_i]\\
+&= \sum_{i=1}^n \frac{\partial}{\partial\beta^T}{\bf x}_i\lambda_i \\
+&= \sum_{i=1}^n {\bf x}_i \frac{\partial \lambda_i}{\partial \eta_i} \frac{\partial \eta_i}{\partial \beta^T} \\
+&= \sum_{i=1}^n {\bf x}_i {\bf x}_i^T\lambda_i\\
+&= X^TWX,
+\end{aligned}
+$$
+where $W$ is the diagonal matrix with $\lambda_i$ as diagonal elements.
+
+The derivatives in the chain rule are derived as following:
+$\frac{\partial \eta_i}{\partial \beta^T}=\frac{\partial {\bf x}_i^T\beta}{\partial \beta^T} = \left(\frac{\partial {\bf x}_i^T\beta}{\partial \beta}\right)^T = {\bf x}_i^T$
+and 
+$\frac{\partial \lambda_i}{\partial \eta_i} =  \frac{\partial\exp(\eta_i)}{\partial \eta_i} = \exp(\eta_i)=\lambda_i$
+
+We note that the Observed Fisher information matrix equal the expected Fisher information matrix for canonical choice of link function. 
+
+
+## 1b) Fisher Scoring Algorithm
+
+#### Input:
+formula: a model formula.\
+data: a data frame containing the data.\
+start: an optional vector containing starting values defaulting to 0.\
+
+#### Output:
+coefficents: A matrix containing the maximum likelihood estimates of each parameter in the first column and estimates of their standard errors based on the final Fisher information matrix.\
+deviance: The deviance of the model, that is twice the difference in log likelihood between the fitted and the saturated model.\
+vcov: The estimated variance matrix of the coefficients.\
+
+#### Notice:
+We will use Fisher scoring algorithm to estimate $\beta$ from the MLE.
+
+$$\beta^{(t+1)}=\beta^{(t)} + F(\beta^{(t)})^{-1} s(\beta^{(t)})$$
+
+Therefore the expected Fisher information matrix $F$ needs to be invertible. As the parameters $\lambda_i=e^{x_i^T\beta}>0$ for all $i$ and the design matrix $X$ has full rank, $p$ we know $F$ is invertible. 
+
+We notice that standard error estimates are the the square root of diagonal elements of the inverse Fisher information matrix. This matrix again equals the variance of $\beta$.
+
+
+```{r myglm, eval=TRUE, echo=TRUE}
+
+myglm <- function(formula, data, start=0) {
+  y <- data$y
+  X <- model.matrix(formula, data) #design matrix
+  beta <- rep(0, ncol(X)) #beta vector
+  
+  repeat {
+    eta <- as.vector(X%*% beta) #eta vector
+    lambda <- exp(eta) 
+    W <- diag(lambda) #diagonal matrix of lambdas
+    score <- apply((y-lambda)*X,2,sum)
+    Fisherinfo <- t(X) %*% W %*% X
+    
+  if (sum(score^2)<1e-10) #break point
+    break()
+    
+    #find coefficient estimate and std.error
+    beta <- beta + solve(Fisherinfo) %*% score
+    F.inv <- solve(Fisherinfo)
+    std.error <- sqrt(diag(F.inv))
+    #matrix of beta and std.error:
+    coeff = cbind(beta, std.error)
+    colnames(coeff) <- c("Estimate", "Std.Error")
+  }
+  # find deviance
+  log.cand <- sum(y*log(lambda)-lambda) #removed y as it cancels!
+  log.sat <- sum(ifelse(y==0,0,y*log(y) ) - y ) #set y=lambda
+  deviance = 2 * (log.sat - log.cand)
+  
+  return (list(coef=coeff, deviance=deviance, vcov = F.inv))
+ }
+  
+```
+
+## 1c) Test
+Load the dataset for problem 2 in order to test the myglm function in 1b compared to the glm function in R.
+
+```{r test myglm}
+
+#data from problem 2 (called data)
+load(url("https://www.math.ntnu.no/emner/TMA4315/2020h/hoge-veluwe.Rdata"))
+formula = data$y~data$t+I(data$t^2)
+#myglm function from 1b
+mod <- myglm(formula, data)
+mod
+
+#glm function
+testMod <- glm(formula = formula, family = poisson(link = log))
+summary(testMod)
+vcov(testMod)
+
+```
+
+# Problem 2
+
+$y$ = number of fledglings leaving the nest per female
+$t$ = date for when the female lays the first egg
+$n = 135$
+
+Assumption: 
+The number of fledglings produced by each female follows a Poisson distribution.
+
+The expected number of fledglings by each female depends on $t_i$ via a Gaussian function with parameters,$\lambda_0$, $\theta$, $\omega$.
+
+$$E[ y_i ] = \lambda_i =  \lambda_0 \exp(-\frac{(t_i-\theta)^2}{2 \omega^2}) $$
+
+## 2a) Interpret parameters
+
+$\lambda_0$ is the height of the curve's peak, which in this example is the maximum number of fledglings, $y_{max}$.
+
+$\theta$ is the position of the center of the peak, in other words the optimal initiate breeding time, $E(t)$.
+
+$\omega$ controls the width of the "bell", which can be interpreted as the spread or variance of the number of fledglings. 
+
+
+## 2b) Reparameterized model 
+
+The reparametrized model is a GLM because:
+
+1) We have a random component $y_i$ which is Poisson distributed.
+2) We have a systematic component $\eta_i = t_i^T\beta$
+3) We have a canonical link function $\eta_i = ln(\lambda_i)$ giving the following relation between the GLM parameters contained in $\boldsymbol{\beta}$ and ($\lambda_0$, $\theta$, $\omega$):
+
+$$\lambda_i = \exp \Big( log(\lambda_0) -\frac{(t_i-\theta)^2}{2 \omega^2} \Big) = \exp(\eta_i) = \exp(t_i \boldsymbol{\beta}) = \exp(\beta_0 + \beta_1t_i + \beta_2 t_i^2) $$
+
+## 2c) Fit the model
+
+This has already been done in problem 1b. Below is the printout once again.
+```{r fit the model}
+mod
+```
+
+## 2d) hypothesis test
+
+In order to check if there is evidence of quadratic effect of $t$ we will perform the following hypothesis test,
+$H_0$: $\beta_2 = 0$
+$H_1$: $\beta_2 \neq 0$
+
+Let‘s choose the Likelihood Ratio Test, LRT, as we already know the deviance from the function in problem 1. We will perform the test using the difference between two deviances, which in this case is a model A with the quadratic effect of $t$ and a model B without this term. 
+
+```{r hypothesis test}
+#hypothesis test using LRT, comparing deviances
+modA <- mod #with beta2
+modB <- myglm(data$y~t, data) #model without beta2
+
+deviancediff <- modB$deviance- mod$deviance
+
+#calculate pvalue
+pvalue <- 1-pchisq(deviancediff, 1)
+pvalue
+```
+
+Since the p-value is `r pvalue` which is smaller then the usual significance level of $0.05$ we reject $H_0$, hence the quadratic effect of $t$ significant.
+
+
+## 2e) Goodness-of-fit
+Using the observed deviance, we will test the goodness-of-fit of the fitted model (with the quadratic effect of $t$) with the following hypotheses:
+
+$H_0$: candidate model is good
+$H_1$: candidate model is not good 
+
+```{r goodness-of-fit}
+#deviance test for model, pvalue 
+pvalue <- 1 - pchisq(mod$deviance, (length(data$t)-length(mod$coef)) )
+pvalue
+```
+
+Again, since the pvalue is `r pvalue` , which is very small compared to the usual significance level we reject the null hypothesis and the model fit is not good. This can be cause by fitting the wrong model, missing covariate, or overdispersion (i.e. the data show more variability than we would expect for a Poisson distributed response).
+
+We will now examine the distribution of the y more closely in order to discuss how the assumptions of the model may be violated.
+
+```{r distribution of y}
+hist(data$y, prob=TRUE) 
+lines(0:max(data$y), dpois(0:max(data$y), mean(data$y)), col = 'red')
+```
+
+From the histogram above we notice that the column for $y=0$ is much greater than what we expect for a Poission distributed response (see red line). In other words, the number of birds in the population that produces zero fledglings is too high compared to what we normally expect from a Poisson distributed response. 
+From this we can conclude that assumption we did about the response being Poisson distributed fails. 
+
+## 2f) MLE for parameterized model
+
+From problem 1 we found that the MLE for the parameter vector $\boldsymbol{\beta}$ is $\hat{\boldsymbol{\beta}}$. We now have a parameterization of $\boldsymbol{\beta}$ to ($\lambda_0$, $\theta$, $\omega$), call this $g(\boldsymbol{\beta})$. Then by defintion, the MLE for $g(\boldsymbol{\beta})$ is $\hat{g(\boldsymbol{\beta})}$ as the MLE is invariant with respect to transformations of the parameter. Therefore we can estimate the parameters $\theta$ and $\omega$ using the estimation of $\boldsymbol{\beta}$.
+
+First, we use the relations between each parameter in $\boldsymbol{\beta}$ and ($\lambda_0$, $\theta$, $\omega$) found in problem 2b to find an expression for each parameter in in $\boldsymbol{\beta}$. 
+Recall that  $\eta = ln(\lambda_i) = t_i \boldsymbol{\beta}$.
+
+$$
+\beta_0 = \log(\lambda_0) -\frac{\theta^2}{2\omega^2}\\ 
+\beta_1 = \frac{\theta}{\omega^2}\\ 
+\beta_2 = -\frac{1}{2\omega^2}
+$$ 
+
+Giving the following expressions for the parameters we wanted to estimate:
+$$
+\omega = g(\hat{\beta_1}, \hat{\beta_2}) = \sqrt{-\frac{1}{2\hat{\beta_2}}}\\
+\theta = h(\hat{\beta_1}, \hat{\beta_2}) = \hat{\beta_1} \omega^2 = \frac{\hat{\beta_1}}{-2 \hat{\beta_2}}
+$$
+
+We can now use the estimation of the parameters in the fitted model from 2c in order to calculate an estimation for $\omega$ and $\theta$.
+
+```{r estimate parameters}
+coeflist <- mod$coef
+
+beta1 <-coeflist[2,1]
+beta2 <-coeflist[3,1]
+
+omega = sqrt(-1/(2*beta2))
+theta = beta1/(-2*beta2)
+```
+
+The estimation of $\omega$ is  `r omega`, while the estimation of $\theta$ is `r theta`.
+
+#### Delta method
+Now we will use the delta method in order to find their standard errors based on asymptotic theory.
+First to find the variance of $\omega$, then for $\theta$.
+$$
+\begin{align}
+\text{Var}(\omega)
+&= \Big(\frac{\partial g}{\partial \hat{\beta_1}}\Big)^2 \text{Var}(\hat{\beta_1}) 
++\Big(\frac{\partial g}{\partial \hat{\beta_2}}\Big)^2 \text{Var}(\hat{\beta_2}) 
++ \frac{\partial g}{\partial\hat{\beta_1}} \frac{\partial g}{\partial\hat{\beta_2}}  \text{Cov}(\hat{\beta_1},\hat{\beta_2} )\\
+&= \Bigg(\frac{1}{\sqrt{2\hat{\beta_2^3}}}\Bigg)^2 \text{Var}(\hat{\beta_2})\\
+&= \frac{1}{2\hat{\beta_2^3}} \text{Var}(\hat{\beta_2}) 
+\end{align}
+
+\begin{align}
+\text{Var}(\theta)
+&= \Big(\frac{\partial h}{\partial \hat{\beta_1}}\Big)^2 \text{Var}(\hat{\beta_1}) 
++\Big(\frac{\partial h}{\partial \hat{\beta_2}}\Big)^2 \text{Var}(\hat{\beta_2}) 
++ \frac{\partial h}{\partial\hat{\beta_1}} \frac{\partial h}{\partial\hat{\beta_2}}  \text{Cov}(\hat{\beta_1},\hat{\beta_2} )\\
+&= \Bigg(-\frac{1}{2\hat{\beta_2}}\Bigg)^2 \text{Var}(\hat{\beta_1}) 
++ \Bigg(\frac{\hat{\beta_1}}{2 \hat{\beta_2^2}}\Bigg)^2 \text{Var}(\hat{\beta_2}) 
++ 2 \Bigg(\frac{-1}{2\hat{\beta_2}} \Bigg)\Bigg(\frac{\hat{\beta_1}}{2\hat{\beta_2^2}} \Bigg)\text{Cov}(\hat{\beta_1},\hat{\beta_2} )
+\end{align}
+$$
+Now we are ready to estimate the variances numerically,
+
+```{r delta method}
+#find variances and covariances of beta vector
+covmatrix <- mod$vcov
+
+varb1 <-covmatrix[2,2]
+varb2 <-covmatrix[3,3]
+covb1b2 <- covmatrix[2:3,2:3]
+covb1b2
+
+#gradients for g and h 
+grad_g <- c(0, (-1/(2*beta2))^(3/2) )
+grad_h <- c(-1/(2*beta2), (beta1/(2*beta2^2)) )
+
+sd_omega <- sqrt(t(grad_g) %*% covb1b2 %*% grad_g)
+sd_theta <- sqrt(t(grad_h) %*% covb1b2 %*% grad_h)
+```
+
+The standard deviation for $\omega$ is `r sd_omega `\
+The standard deviation for $\theta$ is `r sd_theta `\
+
+## 2g)
+
+In order to check if the mean value of $t$ in this population is significantly different from the estimated optimal date based on the fitted model we will do a hypothesis test with the following hypotheses:
+
+$H_0$ : $\theta = \mu$ 
+$H_1$ : $\theta \neq \mu$
+
+As we know that $\lambda_i$ is normal distributed with mean $\theta$ and variance $\omega$ we perform a t-test and calculate the p-value from this distribution. We use the mean of the $t$-values in the data to estimate $\mu$.
+
+```{r 2g}
+
+n <- 135
+tbar <- mean(data$t)
+Z <- tbar-theta/(omega/sqrt(n))
+pvalue <- 2*pnorm(-abs(Z))
+pvalue
+
+```
+
+As the p-value is `r pvalue ` which is smaller then the usual significance level, the null hypothesis is false, meaning $\theta \neq \mu$ and the mean value of $t$ in the population is therefore significantly different from the estimated optimal date based on the fitted model. 
+
+
+# Problem 3
+Parametric bootstraps resample a known distribution function, whose parameters are estimated from the sample data in problem 2. Below, we estimate the variance by doing 
+
+```{r bootstrapping, eval=FALSE}
+
+#set up
+beta <- myglm(formula, data = data)$coef[,1]
+X <- model.matrix(formula, data)
+eta <- as.vector(X%*%beta) #eta vector
+lambda <- exp(eta) 
+#matrix of estimated betahat from each bootstrap sample
+beta_hat <- matrix(0, nrow = 1000, ncol = 3)
+
+#bootstrapping
+for (i in 1:1000){
+  data$y <- rpois(135,lambda) #new estimate of y from a poisson distribution
+  beta_hat[i,] <- myglm(data$y~data$t+I(data$t^2), data = data)$coef[,1]
+}
+
+# variance of beta_hat
+var(beta_hat)
+
+#covariance matrix from fitted model in problem 2
+mod$vcov
+```
+
+We notice that the estimated variance from bootstrapping and from the Expected Fisher information are quite similar. 
+From this we can conclude that the asymptotic result is a good approximation even for finite sample size, $n=135$ in this case.
+
+
