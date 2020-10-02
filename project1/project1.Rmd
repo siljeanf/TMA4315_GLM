@@ -3,7 +3,9 @@ subtitle: "TMA4315 GLM H2020"
 title: "Project 1"
 author: "10013 - siljeanf@stud.ntnu.no"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-output: pdf_document
+output: 
+html_document
+#pdf_document
 ---
 
 ```{r setup, include=FALSE}
