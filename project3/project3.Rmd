@@ -1,0 +1,52 @@
+---
+title: "prosjekt3"
+author: "Silje Anfindsen"
+date: "11/5/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages(glmmTMB)
+```
+
+##  Problem 2
+
+```{r load data }
+long <- read.csv("https://www.math.ntnu.no/emner/TMA4315/2020h/eliteserie.csv", colClasses = c("factor","factor","factor","numeric"))
+```
+
+### 2 a) 
+```{r fit model}
+library(glmmTMB)
+mod <- glmmTMB(goals ~ home + (1|attack) + (1|defence), poisson, data=long, REML=TRUE)
+```
+
+#### Part 1
+State the precise assumptions of this model in suitable mathematical notation.
+
+#### Part 2
+Explain why the Poisson assumption may be reasonable way to model the inherent randomness of a football game.
+
+Poisson distribution can be used to measure the probability of independent events occurring a certain number of times within a set period - such as the number of goals scored in a football match.
+
+It can be used to do this by converting averages into a probability for the changeable outcomes.
+
+The number of events occuring within a time interval or a region, is independent of the number of events that occurs in any other disjoint (non-overlapping) time interval or region.
+The probability that a single event occurs within a small time interval or region, is proportional to the length of the interval or the size of the region.
+The probability that more than one event may occur within a small time interval or region is negligable
+
+When all of these three properties are funfilled we have a Poisson process.
+The number of events in a Poisson process follows a Poisson distribution.
+
+https://help.smarkets.com/hc/en-gb/articles/115001457989-How-to-calculate-Poisson-distribution-for-football-betting
+
+### 2b
+
+```{r summary}
+summary(mod)
+ranef(mod)
+```
+
+#### Part 1
+Briefly discuss if the various parameter estimates appear reasonable.
